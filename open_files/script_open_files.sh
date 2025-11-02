@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 PROGNAME=(basename $0)
+regexpresion=
 directory_filter=
 # Si la variable de entorno OPEN_FILES_FOLDER no está vacía
 if [ -n "$OPEN_FILES_FOLDER" ]; then
@@ -22,7 +23,7 @@ for user in $connected_users; do
   # Ahora para cada usuario, se deben de mostrar los procesos con lsof -u "$user"
   # Ahora, estos procesos, se filtran por la columna Type, que es la quinta, si esta es igual a REG, entonces se hace el print
   # Por último, wc -l va contando todas las líneas que le llegan
-  if [-n "$directory_filter" ]; then
+  if [ -n "$directory_filter" ]; then
     number_files=$(lsof -u "$user" -a +D "$directory_filter" | awk '$5 == "REG" {print}' | wc -l)
   else 
     number_files=$(lsof -u "$user" | awk '$5 == "REG" {print}' | wc -l)
@@ -34,6 +35,24 @@ for user in $connected_users; do
   echo "$user $user_id $old_pid $number_files"
 
 done 
+}
+
+filter_option() {
+  # Cuando se llame a esta función significa que se habrá usado el parámetro -f
+  # Modificar la expresión regular para añadirle el símbolo $ al final.
+  regexpresion=$regexpresion$
+  for user in $connected_users; do
+    if [ -n "$directory_filter" ]; then
+      number_files=$(lsof -u "$user" -a +D "$directory_filter" | awk '$5 == "REG" {print}' | grep -E "$prueba" | wc -l)
+    else 
+      number_files=$(lsof -u "$user" | awk '$5 == "REG" {print}' | grep -E "$prueba" | wc -l)
+    fi
+
+    old_pid=$(ps -u "$user" --sort=start_time | awk 'NR==2 {print$1}')
+    user_id=$(id -u $user)
+
+    echo "$user $user_id $old_pid $number_files"
+  done
 }
 
 # Función para explicar el funcionamiento del script
@@ -56,7 +75,8 @@ while [ "$1" != "" ]; do
       $(usage)
       ;;
     -f )
-      
+      shift
+      regexpresion=$1
       ;;
     -o | --offline )
 
