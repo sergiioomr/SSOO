@@ -3,6 +3,11 @@
 PROGNAME=(basename $0)
 regexpresion=
 directory_filter=
+users_optionu_list=
+list_users=
+u_option=
+sort_option=
+
 # Si la variable de entorno OPEN_FILES_FOLDER no está vacía
 if [ -n "$OPEN_FILES_FOLDER" ]; then
   if [ -d "$OPEN_FILES_FOLDER" ]; then
@@ -14,12 +19,17 @@ fi
 
 # Variable para recorrer después todos los usuarios conectados y mostrar lo que se desee de cada uno
 # who muestra los conectados, awk ... cogerá todos los elementos de la primera columna de cada línea, y sort -u los ordenará eliminando también duplicados
-connected_users=$(who | awk '{print $1}' | sort -u)
+
 
 default_option() {
 
+  if [ "$u_option" != 1 ]; then
+    list_users=$(echo $users_optionu_list | tr ' ' '\n' | sort -u) # Se hace esto para ordenarla y evitar repetidos
+  else
+    list_users=$(who | awk '{print $1}' | sort -u)
+  fi
 
-for user in $connected_users; do
+for user in $list_users; do
   # Ahora para cada usuario, se deben de mostrar los procesos con lsof -u "$user"
   # Ahora, estos procesos, se filtran por la columna Type, que es la quinta, si esta es igual a REG, entonces se hace el print
   # Por último, wc -l va contando todas las líneas que le llegan
@@ -81,11 +91,19 @@ while [ "$1" != "" ]; do
     -o | --offline )
 
       ;;
+
     -u )
+      u_option=1
+      shift
+      while [ [ "$1" != -* ] ] && [ -n "$1" ]; do
+        users_u_list="$users_u_list $1"
+        shift
+      done
 
       ;;
-    -s | --sort )
 
+    -s | --sort )
+      sort_option=1
       ;;
     * )
       $(usage)
@@ -96,4 +114,9 @@ while [ "$1" != "" ]; do
 done
 
 type -P lsof || error_exit "$LINENO: No se ha encontrado el comando lsof"
+
+if [ "$sort_option" = 1 ]; then
+  default_option | sort -k4
+fi
+
 default_option
