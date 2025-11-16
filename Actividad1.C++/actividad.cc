@@ -30,9 +30,11 @@ bool check_args(int argc, char* argv[]) {
     return false;
   } 
 
-  if ((st_origen.st_ino == st_destino.st_ino) && (st_origen.st_dev == st_destino.st_dev)) {
-    std::cerr << "Los archivos pasados por parámetro son iguales" << std::endl;
-    return false;
+  if (stat(destino, &st_destino) == 0) {
+    if ((st_origen.st_ino == st_destino.st_ino) && (st_origen.st_dev == st_destino.st_dev)) {
+      std::cerr << "Los archivos pasados por parámetro son iguales" << std::endl;
+      return false;
+    }
   }
 
   return true;
@@ -42,8 +44,7 @@ bool check_args(int argc, char* argv[]) {
 
 bool is_directory(const std::string& path) {
   struct stat st;
-  const char* filepath = path.c_str();
-  if (stat(filepath, &st) == -1) {
+  if (stat(path.c_str(), &st) == -1) {
     
     std::cerr << "Error al obtener los atributos del archivo " << path << std::endl;
     return false;
@@ -102,7 +103,7 @@ std::expected<void, std::system_error>  copy_file(const std::string& src_path, c
   if (bytes_read < 0) {
     close(fd_src);
     close(fd_dest);
-    return std::unexpected(std::system_error(errno, std::system_category(), "Error al abrir el archivo de destino"));
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al leer el archivo origen"));
   }
 
   close(fd_src);
@@ -117,11 +118,25 @@ std::expected<void, std::system_error>  copy_file(const std::string& src_path, c
 
 
 int main(int argc, char* argv[]) {
-  bool result = check_args(argc, argv);
-  // If has error_(result) 
-  // If is_directory(destino)
-  const char* origen = argv[1];
-  const char* destino = argv[2];
-  copy_file(origen, destino);
+  const std::string origen = argv[1];
+  std::string destino = argv[2];
 
+  bool result = check_args(argc, argv);
+  
+  if (!result) {
+    std::cerr << "Argumentso inválidos" << std::endl;
+    return 1;
+  }
+
+  if (is_directory(destino)) {
+    destino += "/" + get_filename(origen);
+  }
+
+  auto result2 = copy_file(origen, destino);
+  if (!result2.has_value()) {
+    std::cerr << "Error al copiar el archivo" << std::endl;
+    exit(1);
+  }
+
+  return 0;
 }
