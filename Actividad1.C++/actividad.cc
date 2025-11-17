@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 
+
 bool check_args(int argc, char* argv[]) {
   
   if (argc != 3) {
@@ -45,10 +46,9 @@ bool check_args(int argc, char* argv[]) {
 bool is_directory(const std::string& path) {
   struct stat st;
   if (stat(path.c_str(), &st) == -1) {
-    
-    std::cerr << "Error al obtener los atributos del archivo " << path << std::endl;
+    // En este caso, puede darse el error de que el archivo simplemente no exista, y al usar el stat() dará -1
+    // o que el archivo de errores a la hora de obtener sus atributos. En cualquier caso, se devuelve false.  
     return false;
-
   } 
 
   return S_ISDIR(st.st_mode);
@@ -69,6 +69,7 @@ std::string get_filename(const std::string& path) {
   return std::string(base);
 }
 
+[[nodiscard]]
 std::expected<void, std::system_error>  copy_file(const std::string& src_path, const std::string& dest_path, mode_t dst_perms=0) {
   
   int fd_src = open(src_path.c_str(), O_RDONLY);
@@ -114,27 +115,25 @@ std::expected<void, std::system_error>  copy_file(const std::string& src_path, c
 
 
 
-
-
-
 int main(int argc, char* argv[]) {
-  const std::string origen = argv[1];
-  std::string destino = argv[2];
-
   bool result = check_args(argc, argv);
   
   if (!result) {
-    std::cerr << "Argumentso inválidos" << std::endl;
+    std::cerr << "copy: " << errno << std::endl;
     return 1;
   }
+
+  const std::string origen = argv[1];
+  std::string destino = argv[2];
 
   if (is_directory(destino)) {
     destino += "/" + get_filename(origen);
   }
 
-  auto result2 = copy_file(origen, destino);
+  mode_t perms = 0666;
+  auto result2 = copy_file(origen, destino, perms);
   if (!result2.has_value()) {
-    std::cerr << "Error al copiar el archivo" << std::endl;
+    std::cerr << "copy: " << result2.error().what() << std::endl;
     exit(1);
   }
 
