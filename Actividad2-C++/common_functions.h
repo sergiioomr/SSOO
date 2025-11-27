@@ -6,6 +6,8 @@
 #include <sys/types.h>
 #include <libgen.h>
 #include <limits.h>
+#include <fcntl.h>
+#include <signal.h>
 
 std::string get_work_dir_path();
 

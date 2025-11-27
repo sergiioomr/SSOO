@@ -20,14 +20,42 @@
 #include "common_functions.h"
 
 std::expected<pid_t, std::system_error> read_server_pid(const std::string& pid_file_path) {
+  int fd = open(pid_file_path.c_str(), O_RDONLY);
+
+  if (fd < 0) {
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al abrir el archivo para leer el PID del servidor"));
+  }
+
+  char buffer[32];
+  ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+
+  if (bytes_read == -1) {
+    close(fd);
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al leer el archivo que contiene el PID del servidor"));
+  }
+
+  close(fd);
+
+  if(bytes_read == 0) {
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error, el archivo está vacío"));
+  }
 
 
+  buffer[bytes_read] = '\0';
+  std::string pid_str(buffer);
+  pid_t server_pid = std::stoi(pid_str);
+
+  return server_pid;
 }
 
 bool is_server_running(pid_t pid) {
+  if(kill(pid, 0)) {
+    return true;
+  }
 
-
+  return false;
 }
+
 
 std::expected<void, std::system_error> create_fifo(const std::string& fifo_path) {
 
@@ -38,4 +66,19 @@ std::expected<void, std::system_error> write_pid_file(const std::string& pid_fil
 
 }
 
-std::expected<void, std::system_error> setup_signal_handler();
+std::expected<void, std::system_error> setup_signal_handler() {
+
+
+}
+
+std::expected<std::string, std::system_error> read_path_from_fifo(int fifo_fd) {
+
+
+}
+
+void run_server(int fifo_fd, const std::string& backup_dir) {
+
+
+}
+
+
