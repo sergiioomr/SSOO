@@ -1,4 +1,14 @@
-// Archivo que contiene funciones comunes útiles para ambos programas
+/**
+ * Universidad de La Laguna
+ * Escuela Superior de Ingeniería y Tecnología
+ * Grado en Ingeniería Informática
+ * Sistemas Operativos
+ * 
+ * @file common_functions.cc
+ * @author Sergio Molina Ríos (alu0101718194@ull.edu.es)
+ * @date 2025-11-29
+ * @brief Implementación de las funciones de common_functions.cc
+ */
 #include "common_functions.h"
 
 

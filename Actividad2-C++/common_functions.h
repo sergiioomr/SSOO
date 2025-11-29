@@ -1,3 +1,15 @@
+/**
+ * Universidad de La Laguna
+ * Escuela Superior de Ingeniería y Tecnología
+ * Grado en Ingeniería Informática
+ * Sistemas Operativos
+ * 
+ * @file common_functions.h
+ * @author Sergio Molina Ríos (alu0101718194@ull.edu.es)
+ * @date 2025-11-29
+ * @brief Definición de algunas funciones de uso común de backup y backup-server
+ */
+
 #include <iostream>
 #include <string>
 #include <expected>
