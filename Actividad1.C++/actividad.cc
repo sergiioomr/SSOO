@@ -6,13 +6,7 @@
 //  3.3 Obtener el nombre del archivo desde una ruta
 //  3.4 Copiar el archivo
 // 4. Comprobaciones
-#include <sys/stat.h>
-#include <iostream>
-#include <libgen.h>
-#include <expected>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/types.h>
+#include "actividad.h"
 
 
 bool check_args(int argc, char* argv[]) {

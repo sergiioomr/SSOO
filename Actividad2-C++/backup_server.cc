@@ -12,6 +12,7 @@
 
 #include "common_functions.h"
 #include <atomic>
+#include <../Actividad1.C++/actividad.h>
 
 std::atomic<bool> quit_requested{false};
 
@@ -234,12 +235,51 @@ std::expected<std::string, std::system_error> read_path_from_fifo(int fifo_fd) {
  * @param backup_dir 
  */
 void run_server(int fifo_fd, const std::string& backup_dir) {
-  setup_signal_handler();
+  
+  // Primero se perpara el conjunto de señales
+  sigset_t signal_set;
+  siginfo_t signal_info;
 
-  while(true) {
+  sigemptyset(&signal_set);
+  sigaddset(&signal_set, SIGUSR1);
 
+  // Bucle principal, cuando llegue una señal, quit_requested se pondrá a true, y se acabará el bucle
+  while(!quit_requested) {
+    
+    // Llamar a sigwaitinfo para esperar a la señal que se incluya en el signal_set
+    int result = sigwaitinfo(&signal_set, &signal_info);
+
+    // Manejar un posible error al llamar a sigwaitinfo
+    if (result == -1) {
+      std::cerr << "Error en sigwaitinfo" << std::endl;
+      break;
+    }
+
+    // Ahora, leer la ruta desde FIFO
+    auto path = read_path_from_fifo(fifo_fd);
+
+    if (!path.has_value()) {
+      std::cerr << "Error: " << path.error().what() << std::endl;
+      continue; // Seguir esperando más señales
+    }
+
+    std::string path_result = path.value();
+
+    std::string filename = get_filename(path_result);
+    std::string final_rout = backup_dir + "/" + filename;
+
+    // Ahora, se llama a copy
+    auto copy = copy_file(path_result, final_rout, 0666);
+
+    // Comprobar un posible error en copy
+
+    if (!copy.has_value()) {
+      std::cerr << "backup-server: error al hacer el backup de " << path_result << ": " << copy.error().what() << std::endl;
+    } else {
+      std::cout << "backup-server: backup completado: " << path_result << " --> " << final_rout << std::endl;
+    }
   }
-
+  
 }
 
 
