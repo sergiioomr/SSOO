@@ -39,4 +39,8 @@ std::string get_current_dir();
 
 std::string get_filename(const std::string& path);
 
+std::expected<pid_t, std::system_error> read_server_pid(const std::string& pid_file_path);
+
+bool is_server_running(pid_t pid);
+
 

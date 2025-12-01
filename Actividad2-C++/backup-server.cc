@@ -10,63 +10,7 @@
  * @brief implementación de las funciones del backup-server
  */
 
-#include "common_functions.h"
-#include <atomic>
-#include <../Actividad1.C++/actividad.h>
-
-std::atomic<bool> quit_requested{false};
-
-/**
- * @brief Función para leer el pid del servidor
- * 
- * @param pid_file_path 
- * @return std::expected<pid_t, std::system_error> 
- */
-std::expected<pid_t, std::system_error> read_server_pid(const std::string& pid_file_path) {
-  int fd = open(pid_file_path.c_str(), O_RDONLY);
-
-  if (fd < 0) {
-    return std::unexpected(std::system_error(errno, std::system_category(), "Error al abrir el archivo para leer el PID del servidor"));
-  }
-
-  char buffer[32];
-  ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
-
-  if (bytes_read == -1) {
-    close(fd);
-    return std::unexpected(std::system_error(errno, std::system_category(), "Error al leer el archivo que contiene el PID del servidor"));
-  }
-
-  close(fd);
-
-  if(bytes_read == 0) {
-    return std::unexpected(std::system_error(errno, std::system_category(), "Error, el archivo está vacío"));
-  }
-
-
-  buffer[bytes_read] = '\0';
-  std::string pid_str(buffer);
-  pid_t server_pid = std::stoi(pid_str);
-
-  return server_pid;
-}
-
-
-/**
- * @brief Función para comprobar si el proceso con el PID indicado se está ejecutando
- * 
- * @param pid 
- * @return true 
- * @return false 
- */
-bool is_server_running(pid_t pid) {
-  if(kill(pid, 0)) {
-    return true;
-  }
-
-  return false;
-}
-
+#include "backup-server.h"
 
 /**
  * @brief Crea una FIFO con la ruta indicada y permisos 0666. Si ya existe, la elimina y la crea
@@ -107,7 +51,7 @@ std::expected<void, std::system_error> create_fifo(const std::string& fifo_path)
  * @param pid_file_path 
  * @return std::expected<void, std::system_error> 
  */
-std::expected<void, std::system_error> write_pid_file(const std::string& pid_file_path) {
+/*std::expected<void, std::system_error> write_pid_file(const std::string& pid_file_path) {
   int fd = open(pid_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
 
   if (fd == -1) {
@@ -116,11 +60,9 @@ std::expected<void, std::system_error> write_pid_file(const std::string& pid_fil
 
   int process_pid = getpid(); 
 
-  char* buffer[32];
-
   std::string pid = std::to_string(process_pid) + '\n';
 
-  int bytes_written = write(fd, pid.c_str(), sizeof(pid));
+  int bytes_written = write(fd, pid.c_str(), pid.length());
 
   if (bytes_written == -1) {
     close(fd);
@@ -130,7 +72,34 @@ std::expected<void, std::system_error> write_pid_file(const std::string& pid_fil
   close(fd);
   return {};
 }
+*/
+std::expected<void, std::system_error> write_pid_file(const std::string& pid_file_path) {
+  std::cerr << "DEBUG: Intentando crear archivo PID en: " << pid_file_path << std::endl;
+  
+  int fd = open(pid_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
 
+  if (fd == -1) {
+    std::cerr << "DEBUG: Error al abrir, errno: " << errno << std::endl;
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al abrir el archivo donde se escribe el PID"));
+  }
+
+  int process_pid = getpid(); 
+  std::cerr << "DEBUG: PID a escribir: " << process_pid << std::endl;
+
+  std::string pid = std::to_string(process_pid) + '\n';
+
+  int bytes_written = write(fd, pid.c_str(), pid.length());
+
+  if (bytes_written == -1) {
+    std::cerr << "DEBUG: Error al escribir, errno: " << errno << std::endl;
+    close(fd);
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al escribir el PID en el archivo"));
+  }
+
+  std::cerr << "DEBUG: Bytes escritos: " << bytes_written << std::endl;
+  close(fd);
+  return {};
+}
 /**
  * @brief Manejador de señales
  * 
@@ -138,9 +107,8 @@ std::expected<void, std::system_error> write_pid_file(const std::string& pid_fil
  */
 void signal_handler(int signum) {
 
-  char* message = "Recibida señal SIGUSR1\n";
-  write(STDOUT_FILENO, message, sizeof(message));
-
+  const char message[] = "backup-server: señal de terminación recibida\n";
+  write(STDOUT_FILENO, message, sizeof(message) - 1);
   quit_requested = true;
 }
 
@@ -191,7 +159,7 @@ std::expected<void, std::system_error> setup_signal_handler() {
     return std::unexpected(std::system_error(errno, std::system_category(), "Error al instalar el manejador de SIGQUIT"));  
   }
 
-
+  return {};
 }
 
 /**
@@ -212,6 +180,9 @@ std::expected<std::string, std::system_error> read_path_from_fifo(int fifo_fd) {
       return std::unexpected(std::system_error(errno, std::system_category(), "Error al leer de la FIFO"));
     }
 
+    if (bytes_read == 0) {
+      return std::unexpected(std::system_error(errno, std::system_category(), "La FIFO se ha cerrado inesperadamente"));
+    }
     if (buffer[0] == '\n') {
       // Fin de línea, se sale del bucle
       break;
@@ -222,7 +193,7 @@ std::expected<std::string, std::system_error> read_path_from_fifo(int fifo_fd) {
   }
 
   if (path_from_fifo.empty()) {
-    std::unexpected(std::system_error(errno, std::system_category(), "Error, la ruta está vacía"));
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error, la ruta está vacía"));
   }
 
   return path_from_fifo;
@@ -243,6 +214,8 @@ void run_server(int fifo_fd, const std::string& backup_dir) {
   sigemptyset(&signal_set);
   sigaddset(&signal_set, SIGUSR1);
 
+  std::cout << "backup-server: esperando solicitudes de backup en " << backup_dir << std::endl;
+
   // Bucle principal, cuando llegue una señal, quit_requested se pondrá a true, y se acabará el bucle
   while(!quit_requested) {
     
@@ -251,35 +224,135 @@ void run_server(int fifo_fd, const std::string& backup_dir) {
 
     // Manejar un posible error al llamar a sigwaitinfo
     if (result == -1) {
+      if (result == EINTR) {
+        continue;
+      }
       std::cerr << "Error en sigwaitinfo" << std::endl;
       break;
     }
 
-    // Ahora, leer la ruta desde FIFO
-    auto path = read_path_from_fifo(fifo_fd);
-
-    if (!path.has_value()) {
-      std::cerr << "Error: " << path.error().what() << std::endl;
-      continue; // Seguir esperando más señales
+    if (quit_requested) {
+      break;
     }
 
-    std::string path_result = path.value();
 
-    std::string filename = get_filename(path_result);
-    std::string final_rout = backup_dir + "/" + filename;
+    // Ahora, leer la ruta desde FIFO
+    
+    auto path_result = read_path_from_fifo(fifo_fd);
 
-    // Ahora, se llama a copy
-    auto copy = copy_file(path_result, final_rout, 0666);
+    if (!path_result.has_value()) {
+      std::cerr << "backup-server: error: fallo al leer la ruta desde la FIFO" << std::endl;
+      continue;
+    }
 
-    // Comprobar un posible error en copy
+    std::string origen_path = path_result.value();
 
-    if (!copy.has_value()) {
-      std::cerr << "backup-server: error al hacer el backup de " << path_result << ": " << copy.error().what() << std::endl;
+    if (origen_path.empty()){
+      std::cerr << "backup-server: error: La ruta leía está vacía" << std::endl;
+      continue;
+    }
+
+    std::string filename = get_filename(origen_path);
+    std::string destiny_path = backup_dir + "/" + filename;
+
+    auto copy_result = copy_file(origen_path, destiny_path, 0664);
+
+    if (!copy_result.has_value()) {
+      std::cerr << "backupk-server: errror al hacer backup" << std::endl;
     } else {
-      std::cout << "backup-server: backup completado: " << path_result << " --> " << final_rout << std::endl;
+      std::cout << "backup-server: backup completado" << std::endl;
     }
   }
-  
+
+  std::cout << "backup-server: cerrando servidor..." << std::endl;
 }
+
+int main(int argc, char* argv[]) {
+  // Primero, compruebo si se ha pasado ruta de destino
+  std::string backup_dir;
+  if (argc > 1) {
+    backup_dir = argv[1];
+  } else {
+    backup_dir = get_current_dir();
+  }
+
+  // 1. Validar BACKUP_WORK_DIR
+  std::string work_dir = get_work_dir_path();
+  if (work_dir.empty()) {
+    std::cerr << "backup-server: error: BACKUP_WORK_DIR no está definida" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  // 2. Verificar que el directorio de destino existe y es accesible. También que el directorio de trabajo exista
+  if (!is_directory(backup_dir)) {
+    std::cerr << "backup-server: error: el directorio de destino " << backup_dir << " no existe o no es accesible" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if (!is_directory(work_dir)) {
+    std::cerr << "backup-server: error: el directorio de trabajo " << work_dir << " no existe" << std::endl;
+  }
+
+  // 3. Comprobar que no haya otro servidor ejecutándose
+  std::string pid_file = get_pid_file_path();
+  if (file_exists(pid_file)) {
+    auto pid = read_server_pid(pid_file);
+    if (pid && is_server_running(pid.value())) {
+      std::cerr << "backup-server: error: ya hay un servidor ejecutándose" << std::endl;
+      return EXIT_FAILURE;
+    } else {
+      std::cerr << "backup-server: error: archivo de un servidor anterior" << std::endl;
+    } 
+  }
+
+  // 4. Crear la FIFO
+  std::string fifo_path = get_fifo_path();
+  auto result_fifo_create = create_fifo(fifo_path);
+
+  if (!result_fifo_create.has_value()) {
+    std::cerr << "backup-server: error: " << result_fifo_create.error().what() << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  // 5. Escribir el PID en el archivo backup-server.pid
+  auto result_write_pid = write_pid_file(pid_file);
+  if (!result_write_pid.has_value()) {
+    std::cerr << "backup-server: error: " << result_write_pid.error().what() << std::endl;
+    unlink(fifo_path.c_str());
+    return EXIT_FAILURE; 
+  }
+  
+  // 6. Configurar el manejo de señales
+  auto result_signal = setup_signal_handler();
+  if (!result_signal.has_value()) {
+    std::cerr << "backup-server: error: " << result_signal.error().what() << std::endl;
+    unlink(fifo_path.c_str());
+    unlink(pid_file.c_str());
+    return EXIT_FAILURE;
+  }
+
+  // 7. Abrir la FIFO para lectura
+  int fd = open(fifo_path.c_str(), O_RDONLY);
+  if (fd == -1) {
+    std::cerr << "backup-server: error: Error al abrir la FIFO" << std::endl;
+    unlink(fifo_path.c_str());
+    unlink(pid_file.c_str());
+    return EXIT_FAILURE;
+  }
+
+  // 8. Ejecutar el servidor
+  run_server(fd, backup_dir);
+
+  // 9. Limpiar recursos usados
+  close(fd);
+  unlink(fifo_path.c_str());
+  unlink(pid_file.c_str());
+
+  std::cout << "backup-server: servidor terminado" << std::endl;
+  
+  return EXIT_SUCCESS;
+}
+
+
 
 
