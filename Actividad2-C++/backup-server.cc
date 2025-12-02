@@ -51,55 +51,29 @@ std::expected<void, std::system_error> create_fifo(const std::string& fifo_path)
  * @param pid_file_path 
  * @return std::expected<void, std::system_error> 
  */
-/*std::expected<void, std::system_error> write_pid_file(const std::string& pid_file_path) {
-  int fd = open(pid_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
-
-  if (fd == -1) {
-    return std::unexpected(std::system_error(errno, std::system_category(), "Error al abrir el archivo donde se escribe el PID"));
-  }
-
-  int process_pid = getpid(); 
-
-  std::string pid = std::to_string(process_pid) + '\n';
-
-  int bytes_written = write(fd, pid.c_str(), pid.length());
-
-  if (bytes_written == -1) {
-    close(fd);
-    return std::unexpected(std::system_error(errno, std::system_category(), "Error al escribir el PID en el archivo"));
-  }
-
-  close(fd);
-  return {};
-}
-*/
 std::expected<void, std::system_error> write_pid_file(const std::string& pid_file_path) {
-  std::cerr << "DEBUG: Intentando crear archivo PID en: " << pid_file_path << std::endl;
-  
   int fd = open(pid_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
 
   if (fd == -1) {
-    std::cerr << "DEBUG: Error al abrir, errno: " << errno << std::endl;
     return std::unexpected(std::system_error(errno, std::system_category(), "Error al abrir el archivo donde se escribe el PID"));
   }
 
   int process_pid = getpid(); 
-  std::cerr << "DEBUG: PID a escribir: " << process_pid << std::endl;
 
   std::string pid = std::to_string(process_pid) + '\n';
 
   int bytes_written = write(fd, pid.c_str(), pid.length());
 
   if (bytes_written == -1) {
-    std::cerr << "DEBUG: Error al escribir, errno: " << errno << std::endl;
     close(fd);
     return std::unexpected(std::system_error(errno, std::system_category(), "Error al escribir el PID en el archivo"));
   }
 
-  std::cerr << "DEBUG: Bytes escritos: " << bytes_written << std::endl;
   close(fd);
   return {};
 }
+
+
 /**
  * @brief Manejador de señales
  * 
