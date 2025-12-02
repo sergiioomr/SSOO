@@ -42,6 +42,16 @@ std::string get_pid_file_path() {
   return work_dir + "/backup-server.pid";
 }
 
+std::string get_client_pid_file_path() {
+  std::string work_dir = get_work_dir_path();
+
+  if (work_dir.empty()) {
+    return std::string();
+  }
+
+  return work_dir + "/backup.pid";
+}
+
 std::expected<std::string, std::system_error> get_absolute_path(const std::string& path) {
   // Usar nullptr como 2 argumento reservar memoria automáticamente
   char* resolved_path = realpath(path.c_str(), nullptr);
@@ -140,6 +150,31 @@ std::expected<pid_t, std::system_error> read_server_pid(const std::string& pid_f
   return server_pid;
 }
 
+std::expected<pid_t, std::system_error> read_client_pid(const std::string& client_pid_file_path) {
+  int fd = open(client_pid_file_path.c_str(), O_RDONLY);
+
+  if (fd < 0) {
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al abrir el archivo para leer el PID del cliente"));
+  }
+
+  char buffer[32];
+  ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+
+  if (bytes_read == -1) {
+    close(fd);
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al leer el archivo que contiene el PID del cliente"));
+  }
+
+  if (bytes_read == 0) {
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error, el archivo está vacío o no se ha leído el PID completamente"));
+  }
+
+  buffer[bytes_read] = '\0';
+  std::string pid_str(buffer);
+  pid_t client_pid = std::stoi(pid_str);
+
+  return client_pid;
+}
 
 /**
  * @brief Función para comprobar si el proceso con el PID indicado se está ejecutando

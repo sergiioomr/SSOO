@@ -27,6 +27,8 @@ std::string get_fifo_path();
 
 std::string get_pid_file_path();
 
+std::string get_client_pid_file_path();
+
 std::expected<std::string, std::system_error> get_absolute_path(const std::string& path);
 
 bool file_exists(const std::string& path);
@@ -39,7 +41,9 @@ std::string get_current_dir();
 
 std::string get_filename(const std::string& path);
 
-std::expected<pid_t, std::system_error> read_server_pid(const std::string& pid_file_path);
+std::expected<pid_t, std::system_error> read_server_pid(const std::string& pid_file);
+
+std::expected<pid_t, std::system_error> read_client_pid(const std::string& pid_file);
 
 bool is_server_running(pid_t pid);
 

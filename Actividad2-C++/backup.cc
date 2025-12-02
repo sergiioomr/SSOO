@@ -12,6 +12,10 @@
 
 #include "common_functions.h"
 #include "backup-server.h"
+#include <atomic> 
+
+std::atomic<bool> all_ok{false};
+
 
 bool check_args(int argc, char* argv[]) {
   
@@ -31,6 +35,27 @@ std::expected<void, std::system_error> check_work_dir_exists(const std::string& 
   return {};
 }
 
+std::expected<void, std::system_error> write_client_pid_file(const std::string& backup_pid_file_path) {
+  int fd = open(backup_pid_file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
+
+  if (fd == -1) {
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al abrir el archivo donde se escribe el PID"));
+  }
+
+  int process_pid = getpid(); 
+
+  std::string pid = std::to_string(process_pid) + '\n';
+
+  int bytes_written = write(fd, pid.c_str(), pid.length());
+
+  if (bytes_written == -1) {
+    close(fd);
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al escribir el PID en el archivo"));
+  }
+
+  close(fd);
+  return {};
+}
 
 std::expected<int, std::system_error> open_fifo_write(const std::string& fifo_path) {
   int fd = open(fifo_path.c_str(), O_WRONLY);
@@ -59,9 +84,44 @@ std::expected<void, std::system_error> write_path_to_fifo(int fifo_fd, const std
   return {};
 }
 
+std::expected<void, std::system_error> write_pid_to_fifo(int fifo_fd, pid_t pid) {
+  std::string pid_string = std::to_string(pid);
+
+  int bytes_written = write(fifo_fd, pid_string.c_str(), pid_string.length());
+
+  if (bytes_written == -1) {
+    return std::unexpected(std::system_error(errno, std::system_category(), "Error al escribir el pid en la FIFO"));
+  }
+
+  int length = pid_string.length();
+  if (bytes_written != length) {
+    return std::unexpected(std::system_error(errno, std::system_category(), "Escritura del PID en la FIFO inconmpleta"));
+  }
+  
+  return {};
+}
+
+
 int main(int argc, char* argv[]) {
   // 1. Validar argumentos 
   check_args(argc, argv);
+
+  // El cliente ahora debe esperar alguna de las señales SIGUSR1 O SIGUSR2 y ejecutar lo que proceda en cada caso
+  sigset_t sigset;
+  siginfo_t siginfo;
+
+  sigemptyset(&sigset);
+  sigaddset(&sigset, SIGUSR1);
+  sigaddset(&sigset, SIGUSR2);
+
+
+  int result = sigwaitinfo(&sigset, &siginfo);
+
+  if (result == -1) {
+    std::cerr << "error en sigwaitinfo" << std::endl;
+    return EXIT_FAILURE;
+  }
+
 
   // 2. Validar BACKUP_WORK_DIR
   std::string work_dir = get_work_dir_path();
@@ -135,10 +195,18 @@ int main(int argc, char* argv[]) {
 
   std::string absolute_path = absolute_path_result.value();
 
-  // 9. Escribir la ruta en la FIFO
+  // 9. Escribir la ruta en la FIFO y el pid del proceso
   auto write_path_result = write_path_to_fifo(fd, absolute_path);
   if (!write_path_result.has_value()) {
     std::cerr << "backup: error: " << write_path_result.error().what() << std::endl;
+    close(fd);
+    return EXIT_FAILURE;
+  }
+
+  pid_t pid_client = getpid();
+  auto write_pid_result = write_pid_to_fifo(fd, pid_client);
+  if (!write_pid_result.has_value()) {
+    std::cerr << "backup: error: " << write_pid_result.error().what() << std::endl;
     close(fd);
     return EXIT_FAILURE;
   }
@@ -155,6 +223,9 @@ int main(int argc, char* argv[]) {
 
   // 12. Mensaje de confirmación
   std::cout << "solicitud enviada" << std::endl;
+
+  sleep(1000);
+
 
   return EXIT_SUCCESS;
 }

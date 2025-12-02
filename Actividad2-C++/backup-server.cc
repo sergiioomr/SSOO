@@ -188,6 +188,13 @@ void run_server(int fifo_fd, const std::string& backup_dir) {
   sigemptyset(&signal_set);
   sigaddset(&signal_set, SIGUSR1);
 
+  // Obtener el pid del cliente para poder mandar la señal SIGUSR1 o SIGUSR2 según se necesite
+  std::string client_pid_file = get_client_pid_file_path();
+
+  auto result_client_pid_file = read_client_pid(client_pid_file);
+
+  pid_t client_pid = result_client_pid_file.value();
+
   std::cout << "backup-server: esperando solicitudes de backup en " << backup_dir << std::endl;
 
   // Bucle principal, cuando llegue una señal, quit_requested se pondrá a true, y se acabará el bucle
@@ -202,6 +209,7 @@ void run_server(int fifo_fd, const std::string& backup_dir) {
         continue;
       }
       std::cerr << "Error en sigwaitinfo" << std::endl;
+      if (kill(client_pid, SIGUSR2));
       break;
     }
 
@@ -216,6 +224,7 @@ void run_server(int fifo_fd, const std::string& backup_dir) {
 
     if (!path_result.has_value()) {
       std::cerr << "backup-server: error: fallo al leer la ruta desde la FIFO" << std::endl;
+      kill(client_pid, SIGUSR2);
       continue;
     }
 
@@ -223,6 +232,7 @@ void run_server(int fifo_fd, const std::string& backup_dir) {
 
     if (origen_path.empty()){
       std::cerr << "backup-server: error: La ruta leía está vacía" << std::endl;
+      kill(client_pid, SIGUSR2);
       continue;
     }
 
@@ -233,9 +243,16 @@ void run_server(int fifo_fd, const std::string& backup_dir) {
 
     if (!copy_result.has_value()) {
       std::cerr << "backupk-server: errror al hacer backup" << std::endl;
+      kill(client_pid, SIGUSR2);
     } else {
       std::cout << "backup-server: backup completado" << std::endl;
     }
+  }
+
+  // En este momento, el backup se ha realizado correctamente, por lo que se manda una señal de SIGUSR1.
+
+  if (kill(client_pid, SIGUSR1)) {
+    std::cerr << "backup-server : error: Error al enviar la señal SIGUSR1" << std::endl;
   }
 
   std::cout << "backup-server: cerrando servidor..." << std::endl;
