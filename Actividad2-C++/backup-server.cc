@@ -179,7 +179,7 @@ std::expected<std::string, std::system_error> read_path_from_fifo(int fifo_fd) {
  * @param fifo_fd 
  * @param backup_dir 
  */
-void run_server(int fifo_fd, const std::string& backup_dir) {
+void run_server(int fifo_fd, const std::string& backup_dir, const ServerOptions& config) {
   
   // Primero se perpara el conjunto de señales
   sigset_t signal_set;
@@ -238,27 +238,35 @@ void run_server(int fifo_fd, const std::string& backup_dir) {
 
     std::string filename = get_filename(origen_path);
     std::string destiny_path = backup_dir + "/" + filename;
+    if (config.compression == ServerOptions::CompressionType::NONE) {
+      auto copy_result = copy_file(origen_path, destiny_path, 0664);
 
-    auto copy_result = copy_file(origen_path, destiny_path, 0664);
-
-    if (!copy_result.has_value()) {
-      std::cerr << "backupk-server: errror al hacer backup" << std::endl;
-      kill(client_pid, SIGUSR2);
+      if (!copy_result.has_value()) {
+        std::cerr << "backupk-server: errror al hacer backup" << std::endl;
+      } else {
+        std::cout << "backup-server: backup completado" << std::endl;
+      }
     } else {
-      std::cout << "backup-server: backup completado" << std::endl;
+      std::string extension = get_compression_extension(config.compression);
+      destiny_path += extension;
+      std::string commando = get_compression_command(config.compression);
+      auto copy_file = copy_file_compressed(origen_path, destiny_path, commando);
+      if (!copy_file.has_value()) {
+        // Errores
+      } else {
+        std::cout << "backup-server: backup compression completed" << std::endl;
+      }
     }
-  }
-
-  // En este momento, el backup se ha realizado correctamente, por lo que se manda una señal de SIGUSR1.
-
-  if (kill(client_pid, SIGUSR1)) {
-    std::cerr << "backup-server : error: Error al enviar la señal SIGUSR1" << std::endl;
   }
 
   std::cout << "backup-server: cerrando servidor..." << std::endl;
 }
 
 int main(int argc, char* argv[]) {
+  // Falta implementar la actividad 3
+  // Procesar argumentso y crear el ServerOptions config para pasarle a run_server
+
+
   // Primero, compruebo si se ha pasado ruta de destino
   std::string backup_dir;
   if (argc > 1) {
@@ -332,7 +340,7 @@ int main(int argc, char* argv[]) {
   }
 
   // 8. Ejecutar el servidor
-  run_server(fd, backup_dir);
+  run_server(fd, backup_dir,);
 
   // 9. Limpiar recursos usados
   close(fd);
@@ -343,6 +351,197 @@ int main(int argc, char* argv[]) {
   
   return EXIT_SUCCESS;
 }
+
+std::expected<ServerOptions, ParseArgsErrors> parse_arguments(int argc, char* argv[]) {
+  std::vector<std::string_view> args(argv + 1, argv + argc);
+  ServerOptions options;
+  bool multiple_options = false;
+
+  for (auto it = args.begin(); it != args.end(); it++) {
+    if (*it == "-z") {
+      if (multiple_options) {
+        return std::unexpected(ParseArgsErrors::multiple_compression_options);
+      }
+
+      options.compression = ServerOptions::CompressionType::GZIP;
+      multiple_options = true;
+      
+    } else if (*it == "-j") {
+      if (multiple_options) {
+        return std::unexpected(ParseArgsErrors::multiple_compression_options);
+      }
+
+      options.compression = ServerOptions::CompressionType::BZIP2;
+      multiple_options = true;
+
+    } else if (*it == "-x") {
+      if (multiple_options) {
+        return std::unexpected(ParseArgsErrors::multiple_compression_options);
+      }
+
+      options.compression = ServerOptions::CompressionType::XZ;
+      multiple_options = true;
+    } else if (!it->starts_with("-")) {
+      if (!options.backup_dir.empty()) {
+        return std::unexpected(ParseArgsErrors::too_many_arguments);
+      }
+
+      options.backup_dir = std::string(*it);
+    } else {
+      return std::unexpected(ParseArgsErrors::unknown_option);
+    }
+  }
+
+  if (options.backup_dir.empty()) {
+    options.backup_dir = get_current_dir();
+  }
+  
+  return options;
+}
+
+std::string get_compression_command(ServerOptions::CompressionType compression) {
+  switch (compression) {
+    case ServerOptions::CompressionType::GZIP:
+      return "gzip";
+    case ServerOptions::CompressionType::BZIP2:
+      return "bzip2";
+    case ServerOptions::CompressionType::XZ:
+      return "xz";
+    case ServerOptions::CompressionType::NONE:
+      return "";
+    default:
+      return "";
+  }
+}
+
+bool is_command_available(const std::string& command) {
+  // Obtener la variable de entorno path
+  std::string list_of_path = get_environment_variable("PATH");
+
+  // Aquí, se establecen los índices de inicio y final de la primera ruta, con start en 0, inicio de la cadena, y el final en la primera posicion en la que se encuentra ":"
+  size_t start = 0;
+  size_t end = list_of_path.find(':');
+  while(true) {
+    std::string current_dir;
+    // Comprueba si find(:) no encontró el caracter ":" y devolvió npos
+    if(end == std::string::npos) {
+      current_dir = list_of_path.substr(start);
+    
+    // Si el find(:) devolvió algo, entonces, se obtiene la ruta obteniendo el string que va de la posición start a la posición end
+    } else {
+      current_dir = list_of_path.substr(start, end - start);
+    }
+
+    // Se construye la ruta del ejecutable
+    current_dir += "/" + command;
+
+    // Comprobar si existe en esa ruta
+    if(access(current_dir.c_str(), X_OK) == 0) {
+      return true;
+    }
+    
+    // si end ya no tien valor, se acabó el string y se acaba el bucle
+    if(end == std::string::npos) {
+      break;
+    }
+    
+    // Avanzar para obtener el siguiente string en la siguiente iteración
+    start = end + 1;
+    end = list_of_path.find(':', start);
+  }
+  return false;
+}
+
+std::string get_compression_extension(ServerOptions::CompressionType compression) {
+  switch (compression) {
+    case ServerOptions::CompressionType::GZIP:
+      return ".gz";
+    case ServerOptions::CompressionType::BZIP2:
+      return ".bz2";
+    case ServerOptions::CompressionType::XZ:
+      return ".xz";
+    case ServerOptions::CompressionType::NONE:
+      return "";
+    default:
+      return "";
+  }
+}
+
+std::expected<void, CopyFileCompressedError> copy_file_compressed(const std::string& src_path, const std::string& dest_path, const std::string& compression_command) {
+  int pipefd[2];
+  int result = pipe(pipefd);
+
+  if (result == -1) {
+    return std::unexpected(CopyFileCompressedError::pipe_creation_failed);
+  }
+
+  pid_t pid = fork();
+
+  if (pid == -1) {
+    return std::unexpected(CopyFileCompressedError::process_creation_failed);
+  } else if (pid == 0) {
+    // Hijo 
+    dup2(pipefd[0], STDIN_FILENO);
+    close(pipefd[0]);
+
+    int fd = open(dest_path.c_str(), O_RDONLY | O_CREAT | O_TRUNC, 0666);
+    dup2(fd, STDOUT_FILENO);
+    close(pipefd[1]);
+    char* args[] = {const_cast<char*>(compression_command.c_str()), nullptr};
+    execvp(compression_command.c_str(), args);
+    std::exit(127);
+  } else {
+    // Padre
+    sigset_t sigset;
+    sigemptyset(&sigset);
+    sigaddset(&sigset, SIGPIPE);
+    if (sigprocmask(SIG_BLOCK, &sigset, NULL) == -1) {
+      return std::unexpected(CopyFileCompressedError::unknown_error);
+    }
+    close(pipefd[0]);
+    
+    int src_fd = open(src_path.c_str(), O_RDONLY);
+    if (src_fd == -1) {
+      return std::unexpected(CopyFileCompressedError::unknown_error);
+
+    }
+    const size_t buffer_size = 1024 * 64;
+    char buffer[buffer_size];
+    while (true) {
+      ssize_t bytes_read = read(src_fd, buffer, buffer_size);
+      if (bytes_read == -1) {
+        close(src_fd);
+        close(pipefd[1]); 
+        return std::unexpected(CopyFileCompressedError::unknown_error);
+      } else if (bytes_read == 0) {
+        // Acabo de leer
+        break;
+      }
+      ssize_t bytes_written = write(pipefd[1], buffer, bytes_read);
+      if (bytes_written == -1) {
+        close(src_fd);
+        close(pipefd[1]);
+        return std::unexpected(CopyFileCompressedError::unknown_error);
+      }
+    }
+    close(src_fd);
+    close(pipefd[1]);
+    int status;
+    if (waitpid(pid, &status, 0) == -1) {
+      return std::unexpected(CopyFileCompressedError::unknown_error);
+    }
+    if (WIFEXITED(status)) {
+      int exit_code = WEXITSTATUS(status);
+      if(exit_code == 127) return std::unexpected(CopyFileCompressedError::command_not_found);
+      if(exit_code == 126) return std::unexpected(CopyFileCompressedError::command_access_denied);
+      if(exit_code != 0) return std::unexpected(CopyFileCompressedError::command_execution_failed);
+      } else {
+        return std::unexpected(CopyFileCompressedError::command_execution_failed);
+      }
+  }
+  return {};
+}
+
 
 
 

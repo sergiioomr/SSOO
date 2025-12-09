@@ -20,6 +20,9 @@
 #include <limits.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/wait.h>
+
+std::string get_environment_variable(const std::string& name);
 
 std::string get_work_dir_path();
 

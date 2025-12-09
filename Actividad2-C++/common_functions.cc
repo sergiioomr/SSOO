@@ -11,6 +11,14 @@
  */
 #include "common_functions.h"
 
+std::string get_environment_variable(const std::string& name) {
+  char* value = getenv(name.c_str());
+  if(value) {
+    return std::string(value);
+  } else {
+    return std::string();
+  }
+}
 
 std::string get_work_dir_path() {
   std::string var = "BACKUP_WORK_DIR";

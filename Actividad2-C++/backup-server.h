@@ -11,8 +11,9 @@
  */
 
 #include "common_functions.h"
-#include <atomic>
 #include "copy.h"
+#include <atomic>
+#include <vector>
 
 std::atomic<bool> quit_requested{false};
 
@@ -26,7 +27,46 @@ std::expected<void, std::system_error> setup_signal_handler();
 
 std::expected<std::string, std::system_error> read_path_from_fifo(int fifo_fd);
 
-void run_server(int fifo_fd, const std::string& backup_dir);
+void run_server(int fifo_fd, const std::string& backup_dir, const ServerOptions& config);
+
+struct ServerOptions {
+  enum class CompressionType {
+    NONE,
+    GZIP,
+    BZIP2,
+    XZ
+  };
+  CompressionType compression = CompressionType::NONE;
+  std::string backup_dir;
+};
+enum class ParseArgsErrors {
+  unknown_option,
+  multiple_compression_options,
+  too_many_arguments,
+};
+
+std::expected<ServerOptions, ParseArgsErrors> parse_arguments(int argc, char* argv[]);
+
+std::string get_compression_command(ServerOptions::CompressionType compression);
+
+bool is_command_available(const std::string& command);
+
+std::string get_compression_extension(ServerOptions::CompressionType compression);
+
+enum class CopyFileCompressedError {
+  command_access_denied,
+  command_execution_failed,
+  command_not_found,
+  output_access_denied,
+  process_creation_failed,
+  pipe_creation_failed,
+  unknown_error
+};
+
+
+std::expected<void, CopyFileCompressedError> copy_file_compressed(const std::string& src_path, const std::string& dest_path, const std::string& compression_command);
+
+
 
 
 
