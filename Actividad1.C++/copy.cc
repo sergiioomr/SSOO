@@ -6,7 +6,7 @@
 //  3.3 Obtener el nombre del archivo desde una ruta
 //  3.4 Copiar el archivo
 // 4. Comprobaciones
-#include "actividad.h"
+#include "copy.h"
 
 
 bool check_args(int argc, char* argv[]) {
@@ -64,7 +64,7 @@ std::string get_filename(const std::string& path) {
 }
 
 [[nodiscard]]
-std::expected<void, std::system_error>  copy_file(const std::string& src_path, const std::string& dest_path, mode_t dst_perms=0) {
+std::expected<void, std::system_error>  copy_file(const std::string& src_path, const std::string& dest_path, mode_t dst_perms) {
   
   int fd_src = open(src_path.c_str(), O_RDONLY);
   if (fd_src < 0) {
